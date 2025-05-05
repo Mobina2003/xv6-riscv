@@ -134,7 +134,11 @@ runcmd(struct cmd *cmd)
 int
 getcmd(char *buf, int nbuf)
 {
+  
   write(2, "$mobina_sorena_Erfan ", 20);
+
+  
+  
   memset(buf, 0, nbuf);
   gets(buf, nbuf);
   if(buf[0] == 0) // EOF
