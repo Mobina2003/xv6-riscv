@@ -693,3 +693,23 @@ procdump(void)
     printf("\n");
   }
 }
+
+struct thread *
+initthread(struct proc *p)
+{
+  if (!p->current_thread) {
+    for (int i = 0; i < NTHREAD; ++i) {
+      p->threads[i].trapframe = 0;
+      freethread(&p->threads[i]);
+    }
+    struct thread *t = &p->threads[0];
+    t->id = p->pid;
+    if ((t->trapframe = (struct trapframe *)kalloc()) == 0) {
+      freethread(t);
+      return 0;
+    }
+    t->state = THREAD_RUNNING;
+    p->current_thread = t;
+  }
+  return p->current_thread;
+}
