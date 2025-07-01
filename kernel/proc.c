@@ -169,6 +169,14 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  //added
+  p->killed = 0;
+  p->xstate = 0;
+  p->state = UNUSED;
+  p->current_thread = 0; // Reset current_thread to null
+  for (int i = 0; i < NTHREAD; ++i) {
+    freethread(&p->threads[i]); // Free all threads associated with thr process
+  }
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -446,38 +454,37 @@ scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
-
   c->proc = 0;
   for(;;){
     // The most recent process to run may have had interrupts
     // turned off; enable them to avoid a deadlock if all
     // processes are waiting.
     intr_on();
-
     int found = 0;
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
+        // Switch to chosen process. It is the process's job
         // to release its lock and then reacquire it
         // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-        found = 1;
-      }
-      release(&p->lock);
+        if (thread_schd(p)) {
+            p->state = RUNNING;
+            c->proc = p;
+            swtch(&c->context, &p->context);
+            // Process is done running for now.
+            // It should have changed its p->state before coming back.
+            c->proc = 0;
+            found = 1;
+          }
+        }
+        release(&p->lock);
     }
-    if(found == 0) {
+      if(found == 0) {
       // nothing to run; stop running on this core until an interrupt.
-      intr_on();
-      asm volatile("wfi");
+          intr_on();
+          asm volatile("wfi");
+        }
     }
-  }
 }
 
 // Switch to scheduler.  Must hold only p->lock
@@ -694,6 +701,70 @@ procdump(void)
   }
 }
 //added
+void procinit(void)
+{
+  struct proc *p;
+  initlock(&pid_lock, "nextpid");
+  initlock(&wait_lock, "wait_lock");
+  for(p = proc; p < &proc[NPROC]; p++) {
+    initlock(&p->lock, "proc");
+    p->state = UNUSED;
+    p->kstack = KSTACK((int) (p - proc));
+    p->current_thread = 0; //Initialize current_thread to indicate
+    no active thread
+  }
+}
+
+void
+freethread(struct thread *t)
+{
+  t->state = THREAD_UNUSED;
+  if (t->trapframe)
+    kfree((void*)t->trapframe);
+  t->trapframe = 0;
+  t->id = 0;
+  t->join = 0;
+}
+
+int
+thread_schd(struct proc *p) {
+  if (!p->current_thread) {
+    return 1;
+  }
+  if (p->current_thread->state == THREAD_RUNNING) {
+    p->current_thread->state = THREAD_RUNNABLE;
+  }
+  acquire(&tickslock);
+  uint ticks0 = ticks;
+  release(&tickslock);
+  struct thread *next = 0;
+  struct thread *t = p->current_thread + 1;
+  for (int i = 0; i < NTHREAD; i++, t++) {
+    if (t >= p->threads + NTHREAD) {
+      t = p->threads;
+    }
+    if (t->state == THREAD_RUNNABLE) {
+      next = t;
+      break;
+    } else if (t->state == THREAD_SLEEPING && ticks0 - t->sleep_tick0 >= t->sleep_n) {
+      next = t;
+      break;
+    }
+  }
+  if (next == 0) {
+    return 0;
+  } else if (p->current_thread != next) {
+        next->state = THREAD_RUNNING;
+        struct thread *t = p->current_thread;
+        p->current_thread = next;
+        if (t->trapframe) {
+        *t->trapframe = *p->trapframe;
+        }
+        *p->trapframe = *next->trapframe;
+  }
+  return 1;
+}
+
 struct thread *
 initthread(struct proc *p)
 {
@@ -737,17 +808,6 @@ struct thread *allocthread(uint64 start_thread, uint64 stack_address,
     }
   }
   return 0;
-}
-
-void
-freethread(struct thread *t)
-{
-  t->state = THREAD_UNUSED;
-  if (t->trapframe)
-    kfree((void*)t->trapframe);
-  t->trapframe = 0;
-  t->id = 0;
-  t->join = 0;
 }
 
 void exitthread() {
@@ -798,4 +858,24 @@ void sleepthread(int n, uint ticks0) {
   t->sleep_tick0 = ticks0;
   t->state = THREAD_SLEEPING;
   thread_schd(myproc());
+}
+
+struct thread *
+initthread(struct proc *p)
+{
+if (!p->current_thread) {
+    for (int i = 0; i < NTHREAD; ++i) {
+      p->threads[i].trapframe = 0;
+      freethread(&p->threads[i]);
+    }
+    struct thread *t = &p->threads[0];
+    t->id = p->pid;
+    if ((t->trapframe = (struct trapframe *)kalloc()) == 0) {
+      freethread(t);
+      return 0;
+    }
+    t->state = THREAD_RUNNING;
+    p->current_thread = t;
+  }
+  return p->current_thread;
 }
