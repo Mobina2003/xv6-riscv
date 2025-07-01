@@ -78,7 +78,7 @@ struct trapframe {
   /* 272 */ uint64 t5;
   /* 280 */ uint64 t6;
 };
-
+//added
 enum threadstate {
   THREAD_UNUSED,
   THREAD_RUNNABLE

@@ -693,7 +693,7 @@ procdump(void)
     printf("\n");
   }
 }
-
+//added
 struct thread *
 initthread(struct proc *p)
 {
