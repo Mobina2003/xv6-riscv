@@ -45,3 +45,4 @@ void free(void*);
 //added 
 int thread(void *start_thread, int *stack_address, void *arg);
 int jointhread(int id);
+void lock_printf(const char *fmt, ...);

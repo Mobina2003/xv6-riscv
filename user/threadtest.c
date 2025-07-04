@@ -22,7 +22,7 @@ int main(int argc, char *argv[]) {
     int tb = thread(my_thread, sp2 + STACK_SIZE, (void *) 200);
     printf("NEW THREAD CREATED %d\n", tb);
     int tc = thread(my_thread, sp3 + STACK_SIZE, (void *) 300);
-    printf("NEW THREAD CREATED %d\n", tc)
+    printf("NEW THREAD CREATED %d\n", tc);
     jointhread(ta);
     jointhread(tb);
     jointhread(tc);

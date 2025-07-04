@@ -44,17 +44,16 @@ proc_mapstacks(pagetable_t kpgtbl)
 }
 
 // initialize the proc table.
-void
-procinit(void)
+void procinit(void)
 {
   struct proc *p;
-  
   initlock(&pid_lock, "nextpid");
   initlock(&wait_lock, "wait_lock");
   for(p = proc; p < &proc[NPROC]; p++) {
-      initlock(&p->lock, "proc");
-      p->state = UNUSED;
-      p->kstack = KSTACK((int) (p - proc));
+    initlock(&p->lock, "proc");
+    p->state = UNUSED;
+    p->kstack = KSTACK((int) (p - proc));
+    p->current_thread = 0; //Initialize current_thread to indicate no active thread
   }
 }
 
@@ -331,6 +330,40 @@ fork(void)
   release(&np->lock);
 
   return pid;
+}
+
+
+int
+thread_schd(struct proc *p) {
+  if (!p->current_thread) {
+    return 1;
+  }
+  if (p->current_thread->state == THREAD_RUNNING) {
+    p->current_thread->state = THREAD_RUNNABLE;
+  }
+
+  struct thread *next = 0;
+  static int last_thread = 0;
+  for (int i = 0; i < NTHREAD; i++) {
+    int idx = (last_thread + i) % NTHREAD;
+    if(p->threads[idx].state == THREAD_RUNNABLE) {
+      next = &p->threads[idx];
+      last_thread = (idx + 1) % NTHREAD;
+      break;
+    }
+  }
+  if (next == 0) {
+    return 0;
+  } else if (p->current_thread != next) {
+        next->state = THREAD_RUNNING;
+        struct thread *t = p->current_thread;
+        p->current_thread = next;
+        if (t->trapframe) {
+        *t->trapframe = *p->trapframe;
+        }
+        *p->trapframe = *next->trapframe;
+  }
+  return 1;
 }
 
 // Pass p's abandoned children to init.
@@ -701,19 +734,7 @@ procdump(void)
   }
 }
 //added
-void procinit(void)
-{
-  struct proc *p;
-  initlock(&pid_lock, "nextpid");
-  initlock(&wait_lock, "wait_lock");
-  for(p = proc; p < &proc[NPROC]; p++) {
-    initlock(&p->lock, "proc");
-    p->state = UNUSED;
-    p->kstack = KSTACK((int) (p - proc));
-    p->current_thread = 0; //Initialize current_thread to indicate
-    no active thread
-  }
-}
+
 
 void
 freethread(struct thread *t)
@@ -726,44 +747,7 @@ freethread(struct thread *t)
   t->join = 0;
 }
 
-int
-thread_schd(struct proc *p) {
-  if (!p->current_thread) {
-    return 1;
-  }
-  if (p->current_thread->state == THREAD_RUNNING) {
-    p->current_thread->state = THREAD_RUNNABLE;
-  }
-  acquire(&tickslock);
-  uint ticks0 = ticks;
-  release(&tickslock);
-  struct thread *next = 0;
-  struct thread *t = p->current_thread + 1;
-  for (int i = 0; i < NTHREAD; i++, t++) {
-    if (t >= p->threads + NTHREAD) {
-      t = p->threads;
-    }
-    if (t->state == THREAD_RUNNABLE) {
-      next = t;
-      break;
-    } else if (t->state == THREAD_SLEEPING && ticks0 - t->sleep_tick0 >= t->sleep_n) {
-      next = t;
-      break;
-    }
-  }
-  if (next == 0) {
-    return 0;
-  } else if (p->current_thread != next) {
-        next->state = THREAD_RUNNING;
-        struct thread *t = p->current_thread;
-        p->current_thread = next;
-        if (t->trapframe) {
-        *t->trapframe = *p->trapframe;
-        }
-        *p->trapframe = *next->trapframe;
-  }
-  return 1;
-}
+
 
 struct thread *
 initthread(struct proc *p)
@@ -860,22 +844,3 @@ void sleepthread(int n, uint ticks0) {
   thread_schd(myproc());
 }
 
-struct thread *
-initthread(struct proc *p)
-{
-if (!p->current_thread) {
-    for (int i = 0; i < NTHREAD; ++i) {
-      p->threads[i].trapframe = 0;
-      freethread(&p->threads[i]);
-    }
-    struct thread *t = &p->threads[0];
-    t->id = p->pid;
-    if ((t->trapframe = (struct trapframe *)kalloc()) == 0) {
-      freethread(t);
-      return 0;
-    }
-    t->state = THREAD_RUNNING;
-    p->current_thread = t;
-  }
-  return p->current_thread;
-}
