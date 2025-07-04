@@ -81,10 +81,10 @@ struct trapframe {
 //added
 enum threadstate {
   THREAD_UNUSED,
-  THREAD_RUNNABLE
+  THREAD_RUNNABLE,
   THREAD_RUNNING,
   THREAD_JOINED,
-  THREAD_SLEEPING
+  THREAD_SLEEPING,
 };
 
 struct thread {
