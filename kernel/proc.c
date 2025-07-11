@@ -500,6 +500,44 @@ wait(uint64 addr)
   }
 }
 
+int
+thread_schd(struct proc *p) {
+  if (!p->current_thread) {
+    return 1;
+  }
+  if (p->current_thread->state == THREAD_RUNNING) {
+    p->current_thread->state = THREAD_RUNNABLE;
+  }
+  acquire(&tickslock);
+  uint ticks0 = ticks;
+  release(&tickslock);
+  struct thread *next = 0;
+  struct thread *t = p->current_thread + 1;
+  for (int i = 0; i < NTHREAD; i++, t++) {
+    if (t >= p->threads + NTHREAD) {
+      t = p->threads;
+    }
+    if (t->state == THREAD_RUNNABLE) {
+      next = t;
+      break;
+    } else if (t->state == THREAD_SLEEPING && ticks0 - t->sleep_tick0 >= t->sleep_n) {
+      next = t;
+      break;
+    }
+  }
+  if (next == 0) {
+    return 0;
+  } else if (p->current_thread != next) {
+        next->state = THREAD_RUNNING;
+        struct thread *t = p->current_thread;
+        p->current_thread = next;
+        if (t->trapframe) {
+        *t->trapframe = *p->trapframe;
+        }
+        *p->trapframe = *next->trapframe;
+  }
+  return 1;
+}
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
@@ -868,4 +906,3 @@ void sleepthread(int n, uint ticks0) {
   t->state = THREAD_SLEEPING;
   thread_schd(myproc());
 }
-
