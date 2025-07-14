@@ -4,6 +4,7 @@
 #include "riscv.h"
 #include "defs.h"
 
+extern struct spinlock printf_lock; 
 volatile static int started = 0;
 
 // start() jumps here in supervisor mode on all CPUs.
@@ -41,5 +42,8 @@ main()
     plicinithart();   // ask PLIC for device interrupts
   }
 
-  scheduler();        
+  scheduler(); 
+  printfinit();    
+  initlock(&printf_lock, "printf"); 
+   
 }

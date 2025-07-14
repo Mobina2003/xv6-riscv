@@ -59,19 +59,13 @@ printptr(uint64 x)
     consputc(digits[x >> (sizeof(uint64) * 8 - 4)]);
 }
 
-// Print to the console.
-int
-printf(char *fmt, ...)
+//new
+void
+vprintf(const char *fmt, va_list ap)
 {
-  va_list ap;
-  int i, cx, c0, c1, c2, locking;
+  int cx, c0, c1, c2, i;
   char *s;
 
-  locking = pr.locking;
-  if(locking)
-    acquire(&pr.lock);
-
-  va_start(ap, fmt);
   for(i = 0; (cx = fmt[i] & 0xff) != 0; i++){
     if(cx != '%'){
       consputc(cx);
@@ -122,35 +116,23 @@ printf(char *fmt, ...)
       consputc('%');
       consputc(c0);
     }
-
-#if 0
-    switch(c){
-    case 'd':
-      printint(va_arg(ap, int), 10, 1);
-      break;
-    case 'x':
-      printint(va_arg(ap, int), 16, 1);
-      break;
-    case 'p':
-      printptr(va_arg(ap, uint64));
-      break;
-    case 's':
-      if((s = va_arg(ap, char*)) == 0)
-        s = "(null)";
-      for(; *s; s++)
-        consputc(*s);
-      break;
-    case '%':
-      consputc('%');
-      break;
-    default:
-      // Print unknown % sequence to draw attention.
-      consputc('%');
-      consputc(c);
-      break;
-    }
-#endif
   }
+}
+
+
+// Print to the console.
+int
+printf(char *fmt, ...)
+{
+  va_list ap;
+  int locking;
+
+  locking = pr.locking;
+  if(locking)
+    acquire(&pr.lock);
+
+  va_start(ap, fmt);
+  vprintf(fmt, ap);
   va_end(ap);
 
   if(locking)
@@ -175,4 +157,16 @@ printfinit(void)
 {
   initlock(&pr.lock, "pr");
   pr.locking = 1;
+}
+
+
+void
+locked_printf(const char *fmt, ...)
+  {
+      va_list ap;
+      va_start(ap, fmt);
+      acquire(&pr.lock);  // Use the existing pr lock
+      vprintf(fmt, ap);
+      release(&pr.lock);
+      va_end(ap);
 }

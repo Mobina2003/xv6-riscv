@@ -332,6 +332,65 @@ fork(void)
   return pid;
 }
 
+
+int thread_schd(struct proc *p) {
+  if (!p->current_thread) {
+      return 1;
+  }
+  if (p->current_thread->state == THREAD_RUNNING) {
+      p->current_thread->state = THREAD_RUNNABLE;
+  }
+
+  acquire(&tickslock);
+  uint current_ticks = ticks;
+  release(&tickslock);
+
+  static int last_thread = 0;
+  struct thread *next = 0;
+  int start_index = (last_thread + 1) % NTHREAD;
+
+  // Round-robin search with wrap-around
+  for (int i = 0; i < NTHREAD; i++) {
+      int idx = (start_index + i) % NTHREAD;
+      struct thread *t = &p->threads[idx];
+      
+      // Check runnable threads first
+      if (t->state == THREAD_RUNNABLE) {
+          next = t;
+          last_thread = idx;
+          break;
+      }
+      
+      // Check sleeping threads that need to wake up
+      if (t->state == THREAD_SLEEPING && 
+          current_ticks - t->sleep_tick0 >= t->sleep_n) {
+          t->state = THREAD_RUNNABLE;
+          next = t;
+          last_thread = idx;
+          break;
+      }
+  }
+
+  if (!next) return 0;
+
+  if (p->current_thread != next) {
+      next->state = THREAD_RUNNING;
+      struct thread *prev = p->current_thread;
+      p->current_thread = next;
+
+      // Save current context
+      if (prev->trapframe) {
+          *prev->trapframe = *p->trapframe;
+      }
+      
+      // Restore next thread's context
+      if (next->trapframe) {
+          *p->trapframe = *next->trapframe;
+      }
+  }
+  return 1;
+}
+
 // Pass p's abandoned children to init.
 // Caller must hold wait_lock.
 void
@@ -847,5 +906,3 @@ void sleepthread(int n, uint ticks0) {
   t->state = THREAD_SLEEPING;
   thread_schd(myproc());
 }
-
-
